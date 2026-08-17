@@ -157,6 +157,25 @@ def _build_where(filters: dict) -> tuple[str, list]:
             clauses.append(f"{ident} = ?")
             params.append(value)
 
+    # Per-column filters from the row under the table header. Any column may
+    # appear, so each name is whitelisted against the snapshot's own schema
+    # before it is quoted -- an unknown name is ignored rather than
+    # interpolated. Always a contains-match: these are a scanning aid, and the
+    # top filter bar is where exact matching lives.
+    #
+    # Unindexed columns cost ~220 ms here (one full scan of 365k rows) against
+    # ~0.1 ms for the six indexed ones. Stacking them is free: three ANDed
+    # filters measured the same ~246 ms as one, since it is a single scan
+    # either way.
+    known = set(column_names())
+    for col, raw in (filters.get("columns") or {}).items():
+        value = (raw or "").strip()
+        if not value or col not in known:
+            continue
+        ident = quote_ident(col)
+        clauses.append(f"{ident} LIKE ? ESCAPE '\\'")
+        params.append(f"%{_like_escape(value)}%")
+
     for col in config.DATE_FILTERS:
         ident = quote_ident(col)
         start = (filters.get(f"{col}_from") or "").strip()

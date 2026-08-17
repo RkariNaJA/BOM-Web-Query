@@ -13,6 +13,7 @@ Endpoints:
     GET /api/export.csv  -> streaming CSV of the full filtered set (uncapped)
 """
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -41,6 +42,28 @@ _PARAM_BY_COLUMN = {
 app = FastAPI(title="BOM Query Web")
 
 
+def _column_filters(value: str | None) -> dict:
+    """Parse the per-column filter row: a JSON object of column -> substring.
+
+    JSON rather than a repeated `col=value` pair because the view contains
+    names like `Buy Code` and `GCW#`, which do not survive an ad-hoc encoding
+    cleanly. Unknown column names are dropped by db._build_where, which
+    whitelists against the snapshot schema, so a malformed or stale key is
+    ignored rather than rejected -- a bookmarked URL should degrade, not 400.
+    """
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="col_filters must be JSON.")
+    if not isinstance(parsed, dict):
+        raise HTTPException(
+            status_code=400, detail="col_filters must be a JSON object."
+        )
+    return {str(k): str(v) for k, v in parsed.items() if str(v).strip()}
+
+
 def _columns_from_query(value: str | None) -> list[str] | None:
     if not value:
         return None
@@ -56,8 +79,10 @@ def _filters(
     updated_from: str,
     updated_to: str,
     partial: bool,
+    column_filters: dict | None = None,
 ) -> dict:
     return {
+        "columns": column_filters or {},
         "STYLE_NBR": style_nbr,
         "STYLE_SEASON": style_season,
         "Buy Code": buy_code,
@@ -175,12 +200,16 @@ def rows(
     updated_to: str = Query("", description="BOM_UPDATE_DT to, inclusive"),
     partial: bool = Query(False),
     columns: str | None = Query(None),
+    col_filters: str | None = Query(
+        None, description='per-column contains-filters, JSON {"COLUMN": "text"}'
+    ),
 ):
     try:
         return db.fetch_page(
             filters=_filters(
                 style_nbr, style_season, buy_code, item_nbr, im,
                 updated_from, updated_to, partial,
+                _column_filters(col_filters),
             ),
             page=page,
             page_size=page_size,
@@ -203,12 +232,16 @@ def export_csv(
     updated_to: str = Query("", description="BOM_UPDATE_DT to, inclusive"),
     partial: bool = Query(False),
     columns: str | None = Query(None),
+    col_filters: str | None = Query(
+        None, description='per-column contains-filters, JSON {"COLUMN": "text"}'
+    ),
 ):
     """Stream the complete filtered set as CSV. Deliberately uncapped -- this is
     the path that gives the user every matching row without touching the DOM."""
     filters = _filters(
         style_nbr, style_season, buy_code, item_nbr, im,
         updated_from, updated_to, partial,
+        _column_filters(col_filters),
     )
     visible = _columns_from_query(columns)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")

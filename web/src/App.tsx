@@ -1,4 +1,4 @@
-import { useReducer, useState } from 'react'
+import { useEffect, useRef, useReducer, useState } from 'react'
 import { exportUrl } from './api/client'
 import { exportParams, rowsParams, type ParamOverrides } from './api/params'
 import AppBar from './components/AppBar'
@@ -54,6 +54,29 @@ export default function App() {
         visible: new Set(state.defaultColumns),
       }))
     }
+  }
+
+  /* Typing in a column filter re-queries, debounced. Each keystroke would
+     otherwise be a scan: an unindexed column costs ~220 ms against the
+     365k-row snapshot, so firing per character would queue requests behind
+     each other. 350 ms is long enough to swallow a burst of typing and short
+     enough that the table feels live. */
+  const filterTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (filterTimer.current) clearTimeout(filterTimer.current)
+  }, [])
+
+  function onColumnFilterChange(column: string, value: string) {
+    const next = { ...state.columnFilters }
+    if (value.trim()) next[column] = value
+    else delete next[column]
+    dispatch({ type: 'setColumnFilter', column, value })
+    if (!hasRun) return // nothing on screen yet; Search will pick it up
+
+    if (filterTimer.current) clearTimeout(filterTimer.current)
+    filterTimer.current = setTimeout(() => {
+      void runSearch({ columnFilters: next, page: 1 })
+    }, 350)
   }
 
   function onPageSizeChange(next: number) {
@@ -126,6 +149,8 @@ export default function App() {
         visible={state.visible}
         pinned={meta?.pinned ?? ''}
         error={bootError ?? search.error}
+        columnFilters={state.columnFilters}
+        onColumnFilterChange={onColumnFilterChange}
       />
 
       <FooterBar

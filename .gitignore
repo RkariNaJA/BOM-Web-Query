@@ -25,3 +25,7 @@ scripts/snapshot-bootstrap-failures.log
 
 # Local tool settings, not shared
 .claude/settings.local.json
+
+# Playwright captures — may contain real row data; this repo is public
+.playwright-mcp/
+*.png

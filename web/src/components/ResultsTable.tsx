@@ -9,10 +9,15 @@ interface Props {
   visible: Set<string>
   pinned: string
   error: string | null
+  /** Contains-filters keyed by column name, and the handler for the row of
+   *  inputs under the header. */
+  columnFilters: Record<string, string>
+  onColumnFilterChange: (column: string, value: string) => void
 }
 
 export default function ResultsTable({
   payload, allColumns, visible, pinned, error,
+  columnFilters, onColumnFilterChange,
 }: Props) {
   const container = useRef<HTMLDivElement>(null)
 
@@ -82,7 +87,7 @@ export default function ResultsTable({
         <div className="placeholder">
           <span className="mono">No rows match these filters.</span>
           <span className="mono muted" style={{ fontSize: '11px' }}>
-            Try switching partial match on, or clearing a filter.
+            Try clearing a column filter, or switching partial match on.
           </span>
         </div>
       </section>
@@ -97,6 +102,27 @@ export default function ResultsTable({
             <tr>
               {shown.map((name) => (
                 <th key={name} className={name === pinned ? 'pinned' : ''}>{name}</th>
+              ))}
+            </tr>
+            {/* Second header row rather than a separate element: it has to
+                scroll sideways in lockstep with its columns, and being inside
+                <thead> makes it sticky for free. NB the class is
+                `col-filter-row`, not `filter-row` -- that one belongs to the
+                filter panel, where it is a flex row that goes column-direction
+                on narrow screens, which stacks these cells vertically. */}
+            <tr className="col-filter-row">
+              {shown.map((name) => (
+                <th key={name} className={name === pinned ? 'pinned' : ''}>
+                  <input
+                    type="text"
+                    className="col-filter"
+                    value={columnFilters[name] ?? ''}
+                    placeholder="filter"
+                    aria-label={`Filter ${name}`}
+                    onChange={(event) =>
+                      onColumnFilterChange(name, event.target.value)}
+                  />
+                </th>
               ))}
             </tr>
           </thead>

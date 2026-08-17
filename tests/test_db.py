@@ -234,3 +234,68 @@ class TestExportAndStatus:
         monkeypatch.setattr(db, "_columns_cache", None)
         with pytest.raises(RuntimeError, match="No snapshot"):
             db.columns()
+
+
+class TestColumnFilters:
+    """The per-column filter row under the table header.
+
+    Any of the 60 columns can appear here, so this is the one path where a
+    caller-supplied column name reaches an identifier position. It is
+    whitelisted against the snapshot's own schema before being quoted.
+    """
+
+    def test_narrows_the_result_set(self, snapshot):
+        payload = db.fetch_page(
+            {"columns": {"STYLE_NBR": "S1"}}, page=1, page_size=100
+        )
+        assert payload["total"] == 2
+
+    def test_is_a_contains_match(self, snapshot):
+        # Unlike the top filter bar, which is exact unless partial is on.
+        payload = db.fetch_page(
+            {"columns": {"IM": "M"}}, page=1, page_size=100
+        )
+        assert payload["total"] == len(ROWS)
+
+    def test_several_columns_are_anded(self, snapshot):
+        payload = db.fetch_page(
+            {"columns": {"STYLE_NBR": "S1", "IM": "M2"}}, page=1, page_size=100
+        )
+        assert payload["total"] == 1
+
+    def test_ands_with_the_top_filter_bar(self, snapshot):
+        payload = db.fetch_page(
+            {"STYLE_SEASON": "SS26", "columns": {"IM": "M2"}},
+            page=1, page_size=100,
+        )
+        assert payload["total"] == 1
+
+    def test_an_unknown_column_is_ignored_not_interpolated(self, snapshot):
+        # A stale bookmark naming a dropped column must degrade, not 500 --
+        # and the name must never reach the SQL.
+        payload = db.fetch_page(
+            {"columns": {"NOPE": "x"}}, page=1, page_size=100
+        )
+        assert payload["total"] == len(ROWS)
+
+    def test_an_injection_attempt_in_the_column_name_is_ignored(self, snapshot):
+        payload = db.fetch_page(
+            {"columns": {'" OR 1=1 --': "x"}}, page=1, page_size=100
+        )
+        assert payload["total"] == len(ROWS)
+
+    def test_a_literal_percent_is_not_a_wildcard(self, snapshot):
+        payload = db.fetch_page(
+            {"columns": {"STYLE_NBR": "%"}}, page=1, page_size=100
+        )
+        assert payload["total"] == 1  # only the row literally named "100%"
+
+    def test_blank_values_are_dropped(self, snapshot):
+        payload = db.fetch_page(
+            {"columns": {"STYLE_NBR": "   "}}, page=1, page_size=100
+        )
+        assert payload["total"] == len(ROWS)
+
+    def test_the_export_honours_them_too(self, snapshot):
+        body = "".join(db.iter_csv({"columns": {"STYLE_NBR": "S1"}}))
+        assert len(body.strip().splitlines()) == 3  # header + 2
