@@ -49,11 +49,11 @@ cd src && python -m uvicorn main:app --port 8000
 
 Useful variants:
 
-| Command                                                                 | What it does                                   |
-| ----------------------------------------------------------------------- | ---------------------------------------------- |
-| `python scripts/build_snapshot.py`                                      | full rebuild, promotes to `data/bom.sqlite`    |
-| `python scripts/build_snapshot.py --no-swap`                            | builds `data/bom.new.sqlite`, promotes nothing |
-| `python scripts/build_snapshot.py --limit 1000 --out data/trial.sqlite` | quick trial against the view; never promotes   |
+| Command                                                                 | What it does                                    |
+| ----------------------------------------------------------------------- | ----------------------------------------------- |
+| `python scripts/build_snapshot.py`                                      | full rebuild, promotes to `data/bom.sqlite`     |
+| `python scripts/build_snapshot.py --no-swap`                            | builds `data/bom.new.sqlite`, promotes nothing  |
+| `python scripts/build_snapshot.py --limit 1000 --out data/trial.sqlite` | quick trial against the view; never promotes    |
 | `python scripts/build_snapshot.py --max-age-hours 20`                   | rebuild only if the snapshot is older than 20 h |
 
 ### Refreshing automatically
@@ -133,7 +133,7 @@ Dependencies are only `fastapi`, `uvicorn[standard]`, `pyodbc`.
 
 ---
 
-## Troubleshooting a fresh copy
+## Troubleshooting a fresh copy ⚠️⚠️
 
 Everything here comes from setting the project up on a second machine.
 
@@ -148,11 +148,11 @@ python -m uvicorn main:app --port 8000
 `uvicorn` is two things: the **package** pip installs into `site-packages`, and a
 launcher **`uvicorn.exe`** pip drops into Python's `Scripts\` folder. The shell can
 only find the second if `Scripts\` is on `PATH`, and commonly it is not — the Windows
-installer adds it only if you tick *"Add python.exe to PATH"*, a per-user install puts
+installer adds it only if you tick _"Add python.exe to PATH"_, a per-user install puts
 it in `%APPDATA%\Python\Python3xx\Scripts` which is never added, and a `PATH` changed
 during the current terminal session does not apply until you open a new one.
 
-`python -m uvicorn` asks the *same interpreter you installed into* to run the module,
+`python -m uvicorn` asks the _same interpreter you installed into_ to run the module,
 so pip and the run command cannot disagree about which Python they mean.
 
 ### `No module named uvicorn`, even with `python -m`
@@ -182,6 +182,43 @@ python scripts/build_snapshot.py
 
 That is the only step needing network access to SQL Server; everything after it reads
 the local file.
+
+### It runs on the server, but the link will not open from another PC
+
+`http://127.0.0.1:8000` cannot work from a second machine. `127.0.0.1` means *this
+machine, whichever one is asking* — on your own PC it points at your own PC. Two things
+have to change.
+
+**Listen on every interface, not just loopback.** uvicorn defaults to `127.0.0.1`, which
+accepts connections from the server itself only:
+
+```powershell
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+**Open the port.** On the server, as administrator:
+
+```powershell
+New-NetFirewallRule -DisplayName "BOM Query Web" -Direction Inbound `
+  -Protocol TCP -LocalPort 8000 -Action Allow -Profile Domain,Private
+```
+
+Then find the address to give people, on the server:
+
+```powershell
+hostname
+ipconfig | findstr IPv4
+```
+
+and browse to `http://<hostname-or-IP>:8000/` from elsewhere.
+
+⚠️ **The app has no authentication.** On `0.0.0.0` with the port open, anyone on the
+internal network who finds it can read and export every row. Acceptable for internal
+reference data, but make it a deliberate decision.
+
+> If you pasted the address straight out of the console and it looked like
+> `http://127.0.0.1:8000/?[0m%20(Press%20CTRL+C%20to%20quit)`, that is uvicorn's startup
+> banner — an ANSI colour code and the "Press CTRL+C to quit" text — not part of the URL.
 
 ### The page loads but the table is empty
 
