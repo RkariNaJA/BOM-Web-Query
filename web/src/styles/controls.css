@@ -1,0 +1,329 @@
+/* BOM Query Web -- interactive controls: filter panel, buttons, segmented
+   controls, toggle, combobox, date range, column picker.
+   Tokens come from style.css :root; load that first. */
+
+/* --- Filter panel ----------------------------------------------------- */
+.filter-panel {
+  flex: none;
+  margin: 14px 16px 0;
+  padding: 14px 16px;
+  background: var(--paper-raised);
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background-image: radial-gradient(var(--ink-wash) 0.5px, transparent 0.5px);
+  background-size: 4px 4px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.filter-row:first-of-type { margin-top: 10px; }
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+
+/* Six filters wrap into as many columns as the window allows. The date range
+   needs the room for two inputs, so it claims two tracks where possible. */
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px 16px;
+  margin-top: 12px;
+}
+
+.filter-grid .field:last-child { grid-column: span 2; }
+
+.field-note { font-size: 10px; color: var(--ink-muted); }
+
+.date-range { display: flex; align-items: center; gap: 7px; }
+.date-range .combo-field { flex: 1; min-width: 0; }
+
+.date-range input[type="date"] {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--ink);
+  width: 100%;
+  min-width: 0;
+}
+
+/* The native picker button is a dark glyph on paper; keep it in the ink language. */
+.date-range input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.45;
+  cursor: pointer;
+}
+
+.date-range input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 0.9; }
+
+/* --- Buttons ---------------------------------------------------------- */
+button { font-family: inherit; font-size: 12px; color: inherit; cursor: pointer; }
+
+.btn-primary {
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: 3px;
+  padding: 7px 20px;
+  font-weight: 500;
+}
+
+.btn-primary:disabled { opacity: 0.4; cursor: default; }
+
+/* Column set changed in a way that needs a real query. Flagged with an ink
+   ring rather than colour: signal red stays reserved for errors and the
+   large-export notice. */
+.btn-primary.stale { outline: 1px solid var(--ink); outline-offset: 2px; }
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.btn-ghost:hover:not(:disabled) { background: var(--ink-wash); }
+.btn-ghost:disabled { opacity: 0.35; cursor: default; }
+
+.btn-text {
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  color: var(--ink-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.btn-text:hover { color: var(--ink); }
+
+/* --- Segmented control ------------------------------------------------ */
+.segmented { display: inline-flex; }
+
+.segmented button {
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-left-width: 0;
+  padding: 5px 11px;
+  font-size: 12px;
+}
+
+.segmented button:first-child {
+  border-left-width: 1px;
+  border-radius: 3px 0 0 3px;
+}
+
+.segmented button:last-child { border-radius: 0 3px 3px 0; }
+.segmented button:hover:not(.active) { background: var(--ink-wash); }
+
+.segmented button.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--paper);
+}
+
+/* --- Toggle ----------------------------------------------------------- */
+.toggle { display: inline-flex; align-items: center; gap: 9px; cursor: pointer; font-size: 12px; }
+
+.toggle-track {
+  width: 28px;
+  height: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  position: relative;
+  flex: none;
+  transition: background 0.12s;
+}
+
+.toggle-knob {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ink-muted);
+  transition: transform 0.12s, background 0.12s;
+}
+
+.toggle.on .toggle-track { background: var(--ink-wash); border-color: var(--ink); }
+.toggle.on .toggle-knob { transform: translateX(14px); background: var(--ink); }
+
+/* --- Combobox --------------------------------------------------------- */
+.combo { position: relative; }
+
+.combo-field {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 0 9px;
+  height: 30px;
+  background: var(--paper-raised);
+}
+
+.combo-field:focus-within { border-color: var(--ink); }
+
+.combo-field input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.combo-field input::placeholder { color: var(--ink-muted); }
+
+.combo-list {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--paper-raised);
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  z-index: 60;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline) transparent;
+}
+
+.combo-list div {
+  padding: 5px 9px;
+  font-family: var(--font-data);
+  font-size: 11.5px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.combo-list div:last-child { border-bottom: none; }
+.combo-list div:hover, .combo-list div.active { background: var(--ink-wash); }
+.combo-list .combo-note { color: var(--ink-muted); cursor: default; }
+.combo-list .combo-note:hover { background: none; }
+
+/* --- Column picker ---------------------------------------------------- */
+.picker-wrap { position: relative; }
+
+.picker {
+  position: absolute;
+  top: calc(100% + 5px);
+  left: 0;
+  width: min(920px, calc(100vw - 60px));
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--paper-raised);
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  padding: 12px 14px;
+  z-index: 70;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline) transparent;
+}
+
+.picker-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.picker-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  padding: 0 9px;
+  height: 28px;
+}
+
+.picker-search input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--font-data);
+  font-size: 11.5px;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.picker-group { margin-top: 12px; }
+
+.picker-group-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 7px;
+}
+
+.picker-group-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 3px 14px;
+}
+
+.picker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  font-family: var(--font-data);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: 2px;
+}
+
+.picker-item:hover { background: var(--ink-wash); }
+.picker-item.locked { cursor: default; color: var(--ink-secondary); }
+.picker-item.locked:hover { background: none; }
+.picker-item .pin { font-size: 9.5px; color: var(--ink-muted); }
+.picker-item .picker-name { overflow: hidden; text-overflow: ellipsis; }
+
+/* Measured query cost of a column. Weight, not colour, marks the heavy ones. */
+.picker-item .cost {
+  margin-left: auto;
+  padding-left: 6px;
+  font-size: 9.5px;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.picker-item .cost.heavy { color: var(--ink); font-weight: 600; }
+
+.checkbox {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border: 1px solid var(--hairline);
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checkbox svg { display: none; }
+.checkbox.checked { background: var(--ink); border-color: var(--ink); }
+.checkbox.checked svg { display: block; color: var(--paper); }

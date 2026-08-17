@@ -1,0 +1,27 @@
+# Secrets — the connection settings live here, never in source control.
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Node / build
+node_modules/
+
+# Snapshot database — rebuilt nightly, can reach several GB
+data/
+*.sqlite
+*.sqlite-journal
+
+# SDD scratch
+.superpowers/
+
+# Build logs
+scripts/logs/
+# Startup failures recorded before the run log could be opened
+scripts/snapshot-bootstrap-failures.log
+
+# Local tool settings, not shared
+.claude/settings.local.json

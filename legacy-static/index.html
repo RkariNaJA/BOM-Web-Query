@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BOM Query</title>
+<!-- Webfonts are a progressive enhancement: if the network blocks Google
+     Fonts, the stacks in style.css fall back to system-ui / Consolas and any
+     locally installed Noto Sans Thai, so Thai values still render. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Noto+Sans+Thai:wght@400;600&family=Noto+Sans+Thai+Looped:wght@400;600&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/controls.css">
+</head>
+<body>
+
+<!-- Inline icon sprite: no CDN, no icon font. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-search" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+    <circle cx="7" cy="7" r="4.5"/><path d="M10.5 10.5 14 14"/>
+  </symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+    <path d="M4 6.5 8 10.5l4-4"/>
+  </symbol>
+  <symbol id="i-chevron-left" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M9.5 3.5 5 8l4.5 4.5"/>
+  </symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M6.5 3.5 11 8l-4.5 4.5"/>
+  </symbol>
+  <symbol id="i-grid" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3">
+    <path d="M2 2h3.2v12H2zM6.4 2h3.2v12H6.4zM10.8 2H14v12h-3.2z"/>
+  </symbol>
+  <symbol id="i-download" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4">
+    <path d="M8 2v8m0 0 3-3M8 10 5 7M2.5 12.5h11"/>
+  </symbol>
+  <symbol id="i-tick" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2">
+    <path d="M3.5 8.5 6.5 11.5 12.5 4.5"/>
+  </symbol>
+  <symbol id="i-x" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+    <path d="M4 4l8 8M12 4l-8 8"/>
+  </symbol>
+</svg>
+
+<header class="appbar">
+  <span class="wordmark">BOM Query</span>
+  <span class="divider"></span>
+  <span class="mono breadcrumb" id="source">&mdash;</span>
+  <span class="spacer"></span>
+  <span class="status">
+    <span class="glyph idle" id="connGlyph"></span>
+    <span class="status-text" id="connText">connecting…</span>
+  </span>
+  <span class="divider"></span>
+  <span class="mono muted" id="totalRows">— rows</span>
+</header>
+
+<div class="notice hidden" id="notice">
+  <span class="glyph"></span>
+  <span class="mono" id="noticeText"></span>
+  <span class="spacer"></span>
+  <button class="btn-text" id="noticeDismiss">Dismiss</button>
+</div>
+
+<section class="filter-panel">
+  <div class="micro-label">Filter</div>
+
+  <div class="filter-row">
+    <span class="micro-label">Rows</span>
+    <div class="segmented" id="rowLimit"></div>
+    <span class="mono muted" id="rowLimitNote" style="font-size:11px"></span>
+  </div>
+
+  <!-- Populated from /api/meta's filter spec, so adding a filter server-side
+       needs no markup change here. -->
+  <div class="filter-grid" id="filterFields"></div>
+
+  <div class="filter-row">
+    <div class="picker-wrap">
+      <button class="btn-ghost" id="columnsBtn">
+        <svg class="icon"><use href="#i-grid"/></svg>
+        <span class="micro-label" style="color:inherit">Columns</span>
+        <span class="mono muted" id="columnsCount">—</span>
+        <svg class="icon"><use href="#i-chevron-down"/></svg>
+      </button>
+      <div class="picker hidden" id="picker">
+        <div class="picker-head">
+          <div class="picker-search">
+            <svg class="icon muted"><use href="#i-search"/></svg>
+            <input id="pickerSearch" placeholder="filter columns…" autocomplete="off">
+          </div>
+          <button class="btn-text" id="pickerAll">All</button>
+          <span class="divider"></span>
+          <button class="btn-text" id="pickerDefault">Default</button>
+          <span class="divider"></span>
+          <button class="btn-text" id="pickerNone">None</button>
+        </div>
+        <div id="pickerBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="filter-row">
+    <div class="toggle" id="partialToggle" role="switch" aria-checked="false" tabindex="0">
+      <span class="toggle-track"><span class="toggle-knob"></span></span>
+      <span>partial match (LIKE)</span>
+    </div>
+    <span class="spacer"></span>
+    <span class="mono muted" id="staleNote" style="font-size:11px"></span>
+    <button class="btn-text" id="resetBtn">Reset</button>
+    <button class="btn-primary" id="searchBtn">Search</button>
+  </div>
+</section>
+
+<section class="results">
+  <div class="table-container hidden" id="tableWrap">
+    <table>
+      <thead><tr id="theadRow"></tr></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+  <div class="placeholder" id="placeholder">
+    <span class="mono" id="placeholderText">Choose a row limit and press Search.</span>
+    <span class="mono muted" id="placeholderHint" style="font-size:11px"></span>
+  </div>
+</section>
+
+<footer class="footerbar">
+  <span class="mono" id="matchedText">— rows matched</span>
+  <span class="divider"></span>
+  <span class="mono muted" id="queryTime">not run</span>
+  <span class="spacer"></span>
+  <span class="micro-label">Page size</span>
+  <div class="segmented" id="pageSize"></div>
+  <span class="mono muted" id="pageSizeNote" style="font-size:11px">min 100</span>
+  <span class="spacer"></span>
+  <div class="pager">
+    <button class="btn-ghost" id="prevBtn" title="Previous page" disabled>
+      <svg class="icon"><use href="#i-chevron-left"/></svg>
+    </button>
+    <span class="mono" id="pageText">page — / —</span>
+    <button class="btn-ghost" id="nextBtn" title="Next page" disabled>
+      <svg class="icon"><use href="#i-chevron-right"/></svg>
+    </button>
+  </div>
+  <span class="spacer"></span>
+  <button class="btn-ghost" id="exportBtn">
+    <svg class="icon"><use href="#i-download"/></svg>
+    <span>Export CSV</span>
+  </button>
+  <span class="mono muted" style="font-size:11px">full filtered set</span>
+</footer>
+
+<script src="/static/app.js"></script>
+<script src="/static/filters.js"></script>
+</body>
+</html>

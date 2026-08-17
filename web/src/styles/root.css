@@ -1,0 +1,11 @@
+/* React mounts into <div id="root">, but style.css puts the app shell's flex
+   column on `body` and expects .appbar / .filter-panel / .results / .footerbar
+   to be its direct children. `display: contents` takes #root out of the box
+   tree so they are, restoring the original layout exactly: the table scrolls
+   inside .table-container and the page body never does.
+
+   Do not replace this with flex properties on #root -- they would duplicate
+   body's rules and drift from them. */
+#root {
+  display: contents;
+}
