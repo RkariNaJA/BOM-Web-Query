@@ -22,7 +22,7 @@ pip install -r requirements.txt  # install backend deps (fastapi, uvicorn, pyodb
 python scripts/build_snapshot.py # ~2 min: extract the view into data/bom.sqlite
 
 cd src
-uvicorn main:app --port 8000     # serve the FastAPI `app` object from main.py on 127.0.0.1:8000
+python -m uvicorn main:app --port 8000   # serve the FastAPI `app` object from main.py
 ```
 
 Then open <http://127.0.0.1:8000>.
@@ -44,7 +44,7 @@ python scripts/build_snapshot.py
 cd .. && python scripts/build_snapshot.py     # if your shell is in src/
 
 # 3. Start the app again.
-cd src && uvicorn main:app --port 8000
+cd src && python -m uvicorn main:app --port 8000
 ```
 
 Useful variants:
@@ -115,6 +115,14 @@ iterating.
 
 ⚠️ Start uvicorn from **inside `src/`** — `main.py` imports `config` and `db` as
 top-level modules.
+
+⚠️ Use `python -m uvicorn`, not bare `uvicorn`. The bare command only works if
+Python's `Scripts\` directory happens to be on `PATH`, which it is not on a
+default Windows install, nor when pip installed into the per-user site. The
+`-m` form asks the *same* interpreter you just installed into, so it cannot
+disagree with pip. If it still fails with `No module named uvicorn`, then pip
+installed into a different Python than the one `python` resolves to — check with
+`python -c "import sys; print(sys.executable)"` against `pip -V`.
 
 ### Prerequisites
 
@@ -420,7 +428,7 @@ the main table like everything else and no response truncation is needed.
 ### Running it day to day
 
 Currently a **laptop, run by hand** — one user, localhost, no scheduled task. Rebuild the snapshot
-when you want fresher data, stopping the web app first. `uvicorn main:app --port 8000` binding to
+when you want fresher data, stopping the web app first. `python -m uvicorn main:app --port 8000` binding to
 127.0.0.1 is correct for this.
 
 ### Moving to the internal server
