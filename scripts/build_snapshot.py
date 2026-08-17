@@ -354,6 +354,17 @@ def main(argv: list[str] | None = None) -> int:
             )
         return n
 
+    def _positive_number(value: str) -> float:
+        """argparse type for --max-age-hours. Fractions are allowed (0.5 = 30
+        minutes); 0 is rejected for the same reason as --limit, since it would
+        mean "never fresh enough" while reading as "no threshold"."""
+        n = float(value)
+        if n <= 0:
+            raise argparse.ArgumentTypeError(
+                f"--max-age-hours must be greater than 0, got {value}"
+            )
+        return n
+
     # Arguments are parsed before the log is opened, and the parser touches no
     # configuration to do it -- `--out` defaults to None here and is resolved
     # against config inside _run. That keeps `--help` from creating an empty
@@ -365,6 +376,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="extract only the first N rows (for timed trials)")
     parser.add_argument("--no-swap", action="store_true",
                         help="build the file but leave the live snapshot alone")
+    parser.add_argument(
+        "--max-age-hours", type=_positive_number, default=None,
+        help="skip the rebuild if the live snapshot is younger than this "
+             "(for a scheduled task that may fire several times a day)")
     parser.add_argument("--out", type=Path, default=None,
                         help="where to build (default: the configured .new path)")
     try:
@@ -397,6 +412,34 @@ def main(argv: list[str] | None = None) -> int:
             return 1
 
 
+def _snapshot_age_hours(live_path: Path, datetime) -> float | None:
+    """Hours since the live snapshot finished building, or None if unknown.
+
+    None means "cannot vouch for the age" -- no file, no `finished_at`, or an
+    unparseable one -- and the caller rebuilds rather than skipping. Erring
+    towards a rebuild is the safe direction: the cost is two minutes, whereas
+    wrongly skipping serves stale data indefinitely.
+    """
+    live_path = Path(live_path)
+    if not live_path.exists():
+        return None
+    try:
+        conn = sqlite3.connect(f"file:{live_path}?mode=ro", uri=True)
+        try:
+            built = read_meta(conn).get("finished_at")
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    if not built:
+        return None
+    try:
+        delta = datetime.now() - datetime.fromisoformat(built)
+    except (TypeError, ValueError):
+        return None
+    return delta.total_seconds() / 3600
+
+
 def _run(args, log, stamp, script_dir, json, time, datetime) -> int:
     """The build itself, with the log file already open.
 
@@ -421,6 +464,22 @@ def _run(args, log, stamp, script_dir, json, time, datetime) -> int:
 
     if args.out is None:
         args.out = config.SNAPSHOT_NEW_PATH
+
+    # Freshness gate, deliberately before the connection: a logon-triggered
+    # task fires whenever the machine wakes, and re-extracting an hour-old
+    # snapshot costs two minutes and a heavy query against a production view
+    # for nothing. Exit 0 -- "already fresh" is success, not failure.
+    if args.max_age_hours is not None:
+        age = _snapshot_age_hours(config.SNAPSHOT_PATH, datetime)
+        if age is None:
+            _log("no readable snapshot age; rebuilding", log)
+        elif age < args.max_age_hours:
+            _log(f"snapshot is {age:.1f} h old, under the "
+                 f"{args.max_age_hours:g} h threshold -- nothing to do", log)
+            return 0
+        else:
+            _log(f"snapshot is {age:.1f} h old, at or over the "
+                 f"{args.max_age_hours:g} h threshold -- rebuilding", log)
 
     try:
         config.SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)

@@ -943,3 +943,77 @@ class TestMainSanityGate:
         conn = sqlite3.connect(config.SNAPSHOT_PATH)
         assert read_meta(conn)["row_count"] == "1000"
         conn.close()
+
+
+class TestFreshnessGate:
+    """--max-age-hours lets a scheduled task fire often and cheaply.
+
+    A logon-triggered task runs whenever the machine wakes. Without a gate it
+    would re-extract an hour-old snapshot every time -- two minutes and a heavy
+    query against a production view, for nothing.
+    """
+
+    def _build_live(self, tmp_path, monkeypatch, finished_at):
+        """A live snapshot whose recorded build time is `finished_at`."""
+        config = _redirect(tmp_path, monkeypatch)
+        config.SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+        main_c, detect_c = split_columns(FAKE_VIEW_COLUMNS, [])
+        conn = build_snapshot.create_snapshot(
+            config.SNAPSHOT_PATH, main_c, detect_c
+        )
+        build_snapshot.write_meta(conn, {
+            "row_count": 2, "finished_at": finished_at,
+        })
+        conn.close()
+        return config
+
+    def test_a_fresh_snapshot_is_left_alone(self, tmp_path, monkeypatch):
+        pyodbc = pytest.importorskip("pyodbc")
+        recent = (datetime.datetime.now() - datetime.timedelta(hours=1)).isoformat()
+        self._build_live(tmp_path, monkeypatch, recent)
+
+        # The gate must return BEFORE any connection is attempted, so a broken
+        # gate fails loudly here instead of querying production.
+        def forbidden(*a, **k):
+            raise AssertionError("must not connect: the snapshot is fresh")
+        monkeypatch.setattr(pyodbc, "connect", forbidden)
+
+        assert build_snapshot.main(["--max-age-hours", "24"]) == 0
+        assert "nothing to do" in _run_log_text(tmp_path)
+
+    def test_a_stale_snapshot_is_rebuilt(self, tmp_path, monkeypatch):
+        old = (datetime.datetime.now() - datetime.timedelta(hours=40)).isoformat()
+        config = self._build_live(tmp_path, monkeypatch, old)
+        _install_fake_driver(monkeypatch)
+
+        assert build_snapshot.main(["--max-age-hours", "24"]) == 0
+        text = _run_log_text(tmp_path)
+        assert "rebuilding" in text
+        conn = sqlite3.connect(config.SNAPSHOT_PATH)
+        rebuilt = read_meta(conn)["row_count"]
+        conn.close()
+        assert rebuilt == "2"
+
+    def test_no_snapshot_at_all_rebuilds(self, tmp_path, monkeypatch):
+        _redirect(tmp_path, monkeypatch)
+        _install_fake_driver(monkeypatch)
+        assert build_snapshot.main(["--max-age-hours", "24"]) == 0
+        assert "no readable snapshot age" in _run_log_text(tmp_path)
+
+    def test_an_unreadable_build_time_rebuilds_rather_than_skipping(
+        self, tmp_path, monkeypatch
+    ):
+        # Erring towards a rebuild is the safe direction: the cost is two
+        # minutes, whereas wrongly skipping serves stale data indefinitely.
+        config = self._build_live(tmp_path, monkeypatch, "not-a-timestamp")
+        _install_fake_driver(monkeypatch)
+        assert build_snapshot.main(["--max-age-hours", "24"]) == 0
+        assert "no readable snapshot age" in _run_log_text(tmp_path)
+
+    def test_without_the_flag_the_gate_does_not_apply(self, tmp_path, monkeypatch):
+        recent = datetime.datetime.now().isoformat()
+        self._build_live(tmp_path, monkeypatch, recent)
+        _install_fake_driver(monkeypatch)
+        # No --max-age-hours: an explicit manual rebuild always rebuilds.
+        assert build_snapshot.main([]) == 0
+        assert "nothing to do" not in _run_log_text(tmp_path)

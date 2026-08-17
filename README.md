@@ -49,6 +49,39 @@ Useful variants:
 | `python scripts/build_snapshot.py`                                      | full rebuild, promotes to `data/bom.sqlite`    |
 | `python scripts/build_snapshot.py --no-swap`                            | builds `data/bom.new.sqlite`, promotes nothing |
 | `python scripts/build_snapshot.py --limit 1000 --out data/trial.sqlite` | quick trial against the view; never promotes   |
+| `python scripts/build_snapshot.py --max-age-hours 20`                   | rebuild only if the snapshot is older than 20 h |
+
+### Refreshing automatically
+
+`scripts/refresh_snapshot.cmd` is a Task Scheduler entry point. Register it once from a
+normal Command Prompt — **not** as administrator, so the task runs as you and inherits
+your database access:
+
+```bat
+schtasks /Create /TN "BOM Snapshot Refresh" /SC ONLOGON ^
+  /TR "\"C:\path	o\BOM Query Web\scriptsefresh_snapshot.cmd\"" /RL LIMITED /F
+```
+
+**Logon, not midnight** — a laptop is asleep at midnight. That means the task may fire
+several times a day, so the script rebuilds only when the snapshot is older than
+`MAX_AGE_HOURS` (20 by default, set at the top of the file). Otherwise it exits in under
+a second without querying anything.
+
+It also **refuses to run while the web app is up**. The swap cannot rename over a
+snapshot the app holds open, so rather than spend two minutes and a heavy production
+query only to fail at the last step, it checks whether anything is listening on
+`APP_PORT` and skips with an explanation.
+
+| Exit code | Meaning                                                        |
+| --------- | -------------------------------------------------------------- |
+| `0`       | rebuilt, or already fresh                                      |
+| `1`       | failed — see `scripts/logs/`                                   |
+| `2`       | sanity gate rejected the extract; live snapshot left untouched |
+| `3`       | skipped, the web app is holding the snapshot open              |
+
+Task Scheduler's "last run result" shows that code. Inspect with
+`schtasks /Query /TN "BOM Snapshot Refresh" /V /FO LIST`, trigger with `schtasks /Run`,
+remove with `schtasks /Delete /TN "BOM Snapshot Refresh" /F`.
 
 Each run writes a timestamped log to `scripts/logs/`. The line worth reading is
 `extract finished: N rows in Xs total`. A run that fails the sanity check — fewer
