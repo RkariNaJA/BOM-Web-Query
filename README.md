@@ -14,16 +14,21 @@ filter by style or item, read the rows, export the full set to Excel.
 **First time**, from the repo root:
 
 ```bash
-cp .env.example .env      # then fill in the server, database and view
-npm ci # install dependencies for package-lock.json
-npm run build # build the frontend(Complie React into plain html,css,js static files)
-pip install -r requirements.txt # install dependencies for backend
+cp .env.example .env             # then fill in the server, database and view
+npm ci                           # install frontend deps, exactly as pinned in package-lock.json
+npm run build                    # compile React into plain HTML/CSS/JS in src/static
+pip install -r requirements.txt  # install backend deps (fastapi, uvicorn, pyodbc)
 
-python scripts/build_snapshot.py    # ~2 min: extracts the view into data/bom.sqlite
+python scripts/build_snapshot.py # ~2 min: extract the view into data/bom.sqlite
 
 cd src
-uvicorn main:app --port 8000 #Python web backend (FastAPI/Starlette) by serving the app object from main.py
+uvicorn main:app --port 8000     # serve the FastAPI `app` object from main.py on 127.0.0.1:8000
 ```
+
+Then open <http://127.0.0.1:8000>.
+
+Only `build_snapshot.py` talks to SQL Server. `uvicorn` reads the snapshot and nothing else,
+which is why the app starts instantly and never blocks on the view.
 
 **Rebuilding the snapshot later** — the app reads only `data/bom.sqlite` and never
 contacts SQL Server, so this is the only thing that fetches new data:
@@ -104,13 +109,12 @@ It is git-ignored; `.env.example` is the template. Any of its keys can also be
 set as a real environment variable, which takes precedence over the file. The app
 refuses to start if `BOM_DB_SERVER`, `BOM_DB_DATABASE` or `BOM_DB_VIEW` is missing.
 
-`npm run build` compiles the React frontend into `src/static`. For frontend work, run
-`npm run dev` on port 5180 alongside uvicorn — it proxies `/api` to port 8000 and
-hot-reloads.
+For frontend work, run `npm run dev` on port 5180 alongside uvicorn — it proxies
+`/api` to port 8000 and hot-reloads, so you skip the `npm run build` step while
+iterating.
 
-Then open <http://127.0.0.1:8000>.
-
-Run it from inside `src/` — `main.py` imports `config` and `db` as top-level modules.
+⚠️ Start uvicorn from **inside `src/`** — `main.py` imports `config` and `db` as
+top-level modules.
 
 ### Prerequisites
 
