@@ -59,7 +59,7 @@ your database access:
 
 ```bat
 schtasks /Create /TN "BOM Snapshot Refresh" /SC ONLOGON ^
-  /TR "\"C:\path	o\BOM Query Web\scriptsefresh_snapshot.cmd\"" /RL LIMITED /F
+  /TR "\"C:\path\to\BOM Query Web\scripts\refresh_snapshot.cmd\"" /RL LIMITED /F
 ```
 
 **Logon, not midnight** — a laptop is asleep at midnight. That means the task may fire
