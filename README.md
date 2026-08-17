@@ -116,13 +116,8 @@ iterating.
 ⚠️ Start uvicorn from **inside `src/`** — `main.py` imports `config` and `db` as
 top-level modules.
 
-⚠️ Use `python -m uvicorn`, not bare `uvicorn`. The bare command only works if
-Python's `Scripts\` directory happens to be on `PATH`, which it is not on a
-default Windows install, nor when pip installed into the per-user site. The
-`-m` form asks the *same* interpreter you just installed into, so it cannot
-disagree with pip. If it still fails with `No module named uvicorn`, then pip
-installed into a different Python than the one `python` resolves to — check with
-`python -c "import sys; print(sys.executable)"` against `pip -V`.
+⚠️ Use `python -m uvicorn`, not bare `uvicorn` — see
+[Troubleshooting a fresh copy](#troubleshooting-a-fresh-copy) for why.
 
 ### Prerequisites
 
@@ -135,6 +130,64 @@ installed into a different Python than the one `python` resolves to — check wi
 | Network access to the SQL Server instance | again, only to build a snapshot                                          |
 
 Dependencies are only `fastapi`, `uvicorn[standard]`, `pyodbc`.
+
+---
+
+## Troubleshooting a fresh copy
+
+Everything here comes from setting the project up on a second machine.
+
+### `uvicorn : The term 'uvicorn' is not recognized...`
+
+Run it as a module instead:
+
+```powershell
+python -m uvicorn main:app --port 8000
+```
+
+`uvicorn` is two things: the **package** pip installs into `site-packages`, and a
+launcher **`uvicorn.exe`** pip drops into Python's `Scripts\` folder. The shell can
+only find the second if `Scripts\` is on `PATH`, and commonly it is not — the Windows
+installer adds it only if you tick *"Add python.exe to PATH"*, a per-user install puts
+it in `%APPDATA%\Python\Python3xx\Scripts` which is never added, and a `PATH` changed
+during the current terminal session does not apply until you open a new one.
+
+`python -m uvicorn` asks the *same interpreter you installed into* to run the module,
+so pip and the run command cannot disagree about which Python they mean.
+
+### `No module named uvicorn`, even with `python -m`
+
+Then pip installed into a different Python than `python` resolves to. Compare them:
+
+```powershell
+python -c "import sys; print(sys.executable)"
+pip -V
+```
+
+If those name different installations, install through the interpreter rather than the
+`pip` on `PATH`, which guarantees they match:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+### `RuntimeError: No snapshot at ...` — no `data/bom.sqlite`
+
+Expected on a new copy. `data/` is git-ignored and around 359 MB, so it does not travel
+with a clone or a partial file copy. Build one:
+
+```powershell
+python scripts/build_snapshot.py
+```
+
+That is the only step needing network access to SQL Server; everything after it reads
+the local file.
+
+### The page loads but the table is empty
+
+Check the header. If it reads `data as of …` in red, the snapshot is over 36 hours old.
+If the connection glyph is red, open `/api/health` directly — it reports whether the
+snapshot is readable and when it was built.
 
 ---
 
