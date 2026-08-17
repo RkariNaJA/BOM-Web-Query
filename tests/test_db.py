@@ -299,3 +299,59 @@ class TestColumnFilters:
     def test_the_export_honours_them_too(self, snapshot):
         body = "".join(db.iter_csv({"columns": {"STYLE_NBR": "S1"}}))
         assert len(body.strip().splitlines()) == 3  # header + 2
+
+
+class TestCsvNewlineFlattening:
+    """One CSV record must occupy one physical line.
+
+    `USE` and `TEXT_USE_OF_DETECT` hold genuinely multi-line text on 166,647 of
+    365,520 real rows. Quoted, that is valid CSV -- but a 1,948-record export
+    spanned 9,661 lines, which reads as corrupt and breaks line-oriented tools.
+    It also disagreed with the table, where HTML whitespace collapsing already
+    shows those values on one line.
+    """
+
+    def _multiline(self, tmp_path, monkeypatch, value):
+        path = tmp_path / "bom.sqlite"
+        main, detect = split_columns(COLUMNS, [])
+        conn = build_snapshot.create_snapshot(path, main, detect)
+        build_snapshot.load_rows(conn, len(main), len(detect), [[
+            ("S1", 1, value, "SS26", "I1", "M1", None),
+        ]])
+        conn.close()
+        monkeypatch.setattr(config, "SNAPSHOT_PATH", path)
+        monkeypatch.setattr(db, "_columns_cache", None)
+
+    def test_a_record_stays_on_one_line(self, tmp_path, monkeypatch):
+        self._multiline(tmp_path, monkeypatch, "-COLLAR\r\n- SLEEVE\r\n- CUFF\r\n")
+        body = "".join(db.iter_csv({}))
+        assert len(body.strip().splitlines()) == 2  # header + one record
+
+    def test_the_text_is_reflowed_not_dropped(self, tmp_path, monkeypatch):
+        self._multiline(tmp_path, monkeypatch, "-COLLAR\r\n- SLEEVE\r\n- CUFF\r\n")
+        body = "".join(db.iter_csv({}))
+        assert "-COLLAR - SLEEVE - CUFF" in body
+
+    def test_blank_lines_collapse_to_a_single_space(self, tmp_path, monkeypatch):
+        # Real values contain \r\n\r\n between paragraphs.
+        self._multiline(tmp_path, monkeypatch, "SU27 CHASSIS\r\n\r\nRENEW- GAMEDAY")
+        assert "SU27 CHASSIS RENEW- GAMEDAY" in "".join(db.iter_csv({}))
+
+    def test_a_bare_carriage_return_is_handled(self, tmp_path, monkeypatch):
+        self._multiline(tmp_path, monkeypatch, "one\rtwo")
+        body = "".join(db.iter_csv({}))
+        assert "one two" in body
+        assert len(body.strip().splitlines()) == 2
+
+    def test_values_without_newlines_are_untouched(self, tmp_path, monkeypatch):
+        self._multiline(tmp_path, monkeypatch, "PLAIN VALUE")
+        assert "PLAIN VALUE" in "".join(db.iter_csv({}))
+
+    def test_the_record_still_parses_with_every_column(self, tmp_path, monkeypatch):
+        import csv as _csv
+        import io as _io
+        self._multiline(tmp_path, monkeypatch, "a\r\nb")
+        body = "".join(db.iter_csv({}))
+        rows = list(_csv.reader(_io.StringIO(body.lstrip("\ufeff"))))
+        assert len(rows) == 2
+        assert len(rows[0]) == len(COLUMNS) == len(rows[1])

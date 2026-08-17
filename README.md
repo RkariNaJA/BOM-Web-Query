@@ -22,7 +22,9 @@ pip install -r requirements.txt  # install backend deps (fastapi, uvicorn, pyodb
 python scripts/build_snapshot.py # ~2 min: extract the view into data/bom.sqlite
 
 cd src
-python -m uvicorn main:app --port 8000   # serve the FastAPI `app` object from main.py
+# serve the FastAPI `app` object from main.py
+python -m uvicorn main:app --host 0.0.0.0 --port 8000 /  py -m uvicorn main:app --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --port 8000 /  python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 Then open <http://127.0.0.1:8000>.
@@ -142,7 +144,7 @@ Everything here comes from setting the project up on a second machine.
 Run it as a module instead:
 
 ```powershell
-python -m uvicorn main:app --port 8000
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
 `uvicorn` is two things: the **package** pip installs into `site-packages`, and a
@@ -185,8 +187,8 @@ the local file.
 
 ### It runs on the server, but the link will not open from another PC
 
-`http://127.0.0.1:8000` cannot work from a second machine. `127.0.0.1` means *this
-machine, whichever one is asking* — on your own PC it points at your own PC. Two things
+`http://127.0.0.1:8000` cannot work from a second machine. `127.0.0.1` means _this
+machine, whichever one is asking_ — on your own PC it points at your own PC. Two things
 have to change.
 
 **Listen on every interface, not just loopback.** uvicorn defaults to `127.0.0.1`, which
@@ -333,7 +335,14 @@ All 60 columns are available. The picker groups them as the view is actually lai
 
 ### CSV export
 
-Streams the complete filtered set with no row cap, honouring the current column selection.
+Streams the complete filtered set with no row cap, honouring the current column selection
+and every active filter, including the per-column ones.
+
+**Embedded newlines are flattened to spaces.** `USE` and `TEXT_USE_OF_DETECT` hold
+genuinely multi-line text on roughly 46% of rows. Quoting them is valid CSV, but it made
+a 1,948-record export span 9,661 physical lines — which reads as corrupt, breaks
+line-oriented tools, and disagreed with the table, where HTML already collapses those
+values onto one line. The text is reflowed, never truncated.
 Starts with a UTF-8 BOM so Excel on Windows reads the Thai values in `MASTER_BOM_STATUS`
 and `BNR_REMARK` correctly instead of as mojibake. Filenames are timestamped, e.g.
 `<view>-AB1234-20260811-152020.csv`.

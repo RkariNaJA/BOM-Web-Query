@@ -14,6 +14,7 @@ snapshot's own schema and then double-quoted, and every filter value travels as
 a bound parameter.
 """
 
+import re
 import sqlite3
 import threading
 import time
@@ -318,6 +319,27 @@ def fetch_page(
 
 # --- CSV export ----------------------------------------------------------
 
+_NEWLINE_RUN = re.compile(r"\s*[\r\n]+\s*")
+
+
+def _flatten(value):
+    """Collapse embedded newlines so one record occupies one line.
+
+    `USE` and `TEXT_USE_OF_DETECT` hold genuinely multi-line text -- bulleted
+    part lists and free-text notes -- on 166,647 of 365,520 rows. Quoted, that
+    is still valid CSV, but a 1,948-record export spanned 9,661 physical lines,
+    which reads as corrupt, breaks any line-oriented tool, and does not match
+    what the table shows: HTML collapses whitespace, so the same value already
+    appears on one line on screen.
+
+    A run of newlines and the whitespace around it becomes a single space.
+    Nothing is dropped -- the text is reflowed, not truncated.
+    """
+    if isinstance(value, str):
+        return _NEWLINE_RUN.sub(" ", value).strip()
+    return value
+
+
 def iter_csv(filters: dict, visible: list[str] | None = None):
     """Stream the full filtered set as CSV rows.
 
@@ -352,7 +374,9 @@ def iter_csv(filters: dict, visible: list[str] | None = None):
             if not batch:
                 break
             for record in batch:
-                writer.writerow(["" if v is None else v for v in record])
+                writer.writerow(
+                    ["" if v is None else _flatten(v) for v in record]
+                )
             yield drain()
 
 
