@@ -175,3 +175,36 @@ test('a hidden column has no filter box', () => {
   renderTable({ visible: new Set(['BOM_ROW_NBR']) })
   expect(screen.getAllByPlaceholderText('filter')).toHaveLength(1)
 })
+
+test('new results reset the vertical scroll but keep the horizontal position', () => {
+  // Filtering on a far-right column must not yank the user back to column one.
+  const { container, rerender } = render(
+    <ResultsTable
+      payload={payload()}
+      allColumns={ALL}
+      visible={new Set(ALL)}
+      pinned="BOM_ROW_NBR"
+      error={null}
+      columnFilters={{}}
+      onColumnFilterChange={() => {}}
+    />,
+  )
+  const box = container.querySelector('.table-container') as HTMLElement
+  box.scrollTop = 400
+  box.scrollLeft = 2200
+
+  rerender(
+    <ResultsTable
+      payload={payload({ total: 12 })}
+      allColumns={ALL}
+      visible={new Set(ALL)}
+      pinned="BOM_ROW_NBR"
+      error={null}
+      columnFilters={{ MASTER_BOM_STATUS: 'x' }}
+      onColumnFilterChange={() => {}}
+    />,
+  )
+
+  expect(box.scrollTop).toBe(0)
+  expect(box.scrollLeft).toBe(2200)
+})

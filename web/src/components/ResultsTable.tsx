@@ -50,12 +50,17 @@ export default function ResultsTable({
     }).join('')
   }, [payload, shown, pinned])
 
-  /* A new search or page starts at the top-left, otherwise the first rows sit
-     hidden above the scroll position and the table looks truncated. */
+  /* New results start at the first row, otherwise they sit hidden above the
+     scroll position and the table looks truncated.
+
+     Vertical only. Resetting scrollLeft too would yank the user back to column
+     one every time results arrive -- which is exactly what happens when they
+     type in the filter box of, say, the 30th column: the results they asked
+     for appear, and the column they were looking at scrolls off screen. The
+     horizontal position is where the user put it, so leave it alone. */
   useLayoutEffect(() => {
     if (container.current) {
       container.current.scrollTop = 0
-      container.current.scrollLeft = 0
     }
   }, [payload])
 
