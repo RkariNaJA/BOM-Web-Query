@@ -104,6 +104,17 @@ button { font-family: inherit; font-size: 12px; color: inherit; cursor: pointer;
 
 .btn-text:hover { color: var(--ink); }
 
+/* The clear-column-filters button. It appears only when filters are set, and
+   those filters may be scrolled off screen among 60 columns -- so it is a
+   a state indicator as much as a control, and reads at full ink weight rather
+   than as muted secondary text. */
+.btn-text.has-filters {
+  color: var(--ink);
+  font-weight: 600;
+  font-family: var(--font-data);
+  font-size: 11px;
+}
+
 /* --- Segmented control ------------------------------------------------ */
 .segmented { display: inline-flex; }
 

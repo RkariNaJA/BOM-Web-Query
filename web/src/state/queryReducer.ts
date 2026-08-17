@@ -24,6 +24,7 @@ export type QueryAction =
   | { type: 'setPage'; value: number }
   | { type: 'setVisible'; value: Set<string> }
   | { type: 'setColumnFilter'; column: string; value: string }
+  | { type: 'clearColumnFilters' }
   | { type: 'reset' }
 
 export const initialQueryState: QueryState = {
@@ -66,6 +67,10 @@ export function queryReducer(state: QueryState, action: QueryAction): QueryState
     // Column visibility changes projection, not matching, so the page holds.
     case 'setVisible':
       return { ...state, visible: action.value }
+    case 'clearColumnFilters':
+      // Only the per-column row. The top filter bar is untouched -- Reset is
+      // the control that clears everything.
+      return { ...state, columnFilters: {}, page: 1 }
     case 'setColumnFilter': {
       const next = { ...state.columnFilters }
       // Drop the key when cleared, so an empty box is indistinguishable from

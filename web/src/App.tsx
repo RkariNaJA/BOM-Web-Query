@@ -79,6 +79,14 @@ export default function App() {
     }, 350)
   }
 
+  function onClearColumnFilters() {
+    // Cancel a debounce already in flight, or it would fire after this and
+    // re-apply the value the user just cleared.
+    if (filterTimer.current) clearTimeout(filterTimer.current)
+    dispatch({ type: 'clearColumnFilters' })
+    if (hasRun) void runSearch({ columnFilters: {}, page: 1 })
+  }
+
   function onPageSizeChange(next: number) {
     dispatch({ type: 'setPageSize', value: next })
     if (hasRun) void runSearch({ pageSize: next, page: 1 })
@@ -126,6 +134,8 @@ export default function App() {
           values={state.values}
           partial={state.partial}
           busy={search.busy}
+          columnFilterCount={Object.keys(state.columnFilters).length}
+          onClearColumnFilters={onClearColumnFilters}
           columnsButton={
             <ColumnPicker
               groups={meta.groups}

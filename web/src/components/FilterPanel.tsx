@@ -8,6 +8,11 @@ interface Props {
   values: Record<string, string>
   partial: boolean
   busy: boolean
+  /** How many per-column filters are set, and how to clear them. Shown only
+   *  when there are any -- with 60 columns a filter set on column 45 is
+   *  otherwise invisible from here, and the count is the only clue. */
+  columnFilterCount: number
+  onClearColumnFilters: () => void
   columnsButton: ReactNode
   onValueChange: (param: string, value: string) => void
   onPartialChange: (next: boolean) => void
@@ -16,7 +21,7 @@ interface Props {
 }
 
 export default function FilterPanel({
-  specs, values, partial, busy,
+  specs, values, partial, busy, columnFilterCount, onClearColumnFilters,
   columnsButton, onValueChange, onPartialChange, onSearch, onReset,
 }: Props) {
   return (
@@ -44,6 +49,16 @@ export default function FilterPanel({
       <div className="filter-row">
         <Toggle checked={partial} onChange={onPartialChange} label="partial match (LIKE)" />
         <span className="spacer" />
+        {columnFilterCount > 0 && (
+          <button
+            type="button"
+            className="btn-text has-filters"
+            onClick={onClearColumnFilters}
+          >
+            clear {columnFilterCount} column filter
+            {columnFilterCount > 1 ? 's' : ''}
+          </button>
+        )}
         <button type="button" className="btn-text" onClick={onReset}>Reset</button>
         <button
           type="button"

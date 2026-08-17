@@ -24,6 +24,8 @@ function renderPanel(overrides: Partial<React.ComponentProps<typeof FilterPanel>
     values: { style_nbr: '', buy_code: '', updated_from: '', updated_to: '' },
     partial: false,
     busy: false,
+    columnFilterCount: 0,
+    onClearColumnFilters: vi.fn(),
     columnsButton: <button type="button">Columns</button>,
     onValueChange: vi.fn(),
     onPartialChange: vi.fn(),
@@ -84,4 +86,29 @@ test('Search and Reset call their handlers', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Reset' }))
   expect(props.onSearch).toHaveBeenCalledTimes(1)
   expect(props.onReset).toHaveBeenCalledTimes(1)
+})
+
+test('offers no clear button when no column filters are set', () => {
+  renderPanel()
+  expect(screen.queryByRole('button', { name: /clear .* column filter/i }))
+    .not.toBeInTheDocument()
+})
+
+test('names how many column filters are set, since they may be off screen', () => {
+  renderPanel({ columnFilterCount: 3 })
+  expect(screen.getByRole('button', { name: 'clear 3 column filters' }))
+    .toBeInTheDocument()
+})
+
+test('uses the singular for one filter', () => {
+  renderPanel({ columnFilterCount: 1 })
+  expect(screen.getByRole('button', { name: 'clear 1 column filter' }))
+    .toBeInTheDocument()
+})
+
+test('clearing column filters calls its own handler, not Reset', async () => {
+  const props = renderPanel({ columnFilterCount: 2 })
+  await userEvent.click(screen.getByRole('button', { name: 'clear 2 column filters' }))
+  expect(props.onClearColumnFilters).toHaveBeenCalledTimes(1)
+  expect(props.onReset).not.toHaveBeenCalled()
 })
