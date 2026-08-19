@@ -11,7 +11,7 @@ filter by style or item, read the rows, export the full set to Excel.
 
 ## Quick start
 
-**First time**, from the repo root:
+**📌First time📌**, from the repo root:
 
 ```bash
 cp .env.example .env             # then fill in the server, database and view
@@ -25,6 +25,16 @@ cd src
 # serve the FastAPI `app` object from main.py
 python -m uvicorn main:app --host 0.0.0.0 --port 8000 /  py -m uvicorn main:app --host 0.0.0.0 --port 8000
 python -m uvicorn main:app --port 8000 /  python -m uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+**Everytime before running the Web**
+
+```bash
+#1 Stop the web first (CTRL + C)
+#2 Run this command to refresh the snapshot
+python scripts/build_snapshot.py
+#3 Start the web again
+cd src && python -m uvicorn main:app --port 8000
 ```
 
 Then open <http://127.0.0.1:8000>.
@@ -547,5 +557,115 @@ Still to do, when this goes to production on the shared always-on machine:
   who finds the port can read it.
 
 Spec §8 covers both phases in full.
+
+---
+
+## Problem & Solution — the snapshot swap fails while the app is running
+
+> **Status: documented, not fixed.** The problem below is real and reproducible on the internal
+> server. The solution is a proposal — no code has been changed for it yet. Until it is done, the
+> workaround stands: **stop the web app before rebuilding.**
+
+### The problem
+
+Running `python scripts/build_snapshot.py` on the internal server while the app was up:
+
+```text
+extract finished: 355,735 rows in 128s total (27s streaming, 13,067 rows/s)
+building indexes...
+snapshot written: ...\BOM Query Web\data\bom.new.sqlite (350 MB)
+FAILED after extract: [WinError 5] Access is denied:
+  '...\data\bom.new.sqlite' -> '...\data\bom.sqlite'
+```
+
+The extract, the indexes and the 350 MB file all succeeded. Only the final promotion failed —
+`os.replace(new_path, live_path)` in `swap_in` (`scripts/build_snapshot.py`). **Windows refuses to
+rename over a file another process holds open**, which is exactly what `swap_in`'s docstring warns
+about and what the guard comment above the `try` block names as the case it exists to report.
+
+**The app does not hold the file continuously, and that makes it worse, not better.** `_connect()`
+in `src/db.py` opens a _fresh read-only connection per request_ — no pool, no long-lived handle, and
+no lifespan warm-up (removed deliberately; see the comment in `src/main.py`). The frontend does not
+poll either: the `setInterval` in `web/src/state/useSearch.ts` is a client-side elapsed-time counter
+using `performance.now()`, and `pollTotal` in `web/src/state/useMeta.ts` is a bounded retry that
+stops once `total_rows` resolves. So an idle app holds nothing.
+
+That means the failure is a **race, not a lock**: the swap lands at an unpredictable moment roughly
+two minutes into a run, and any request overlapping it fails the rename. It will therefore
+_sometimes succeed_, which is the worst behaviour — intermittent success is how this gets trusted
+and then breaks unattended.
+
+Other processes take the same lock and stopping uvicorn does not help with any of them:
+
+- **Antivirus** scanning a freshly written 350 MB file
+- **A DB browser** (DB Browser for SQLite, DBeaver) left open on `bom.sqlite`
+- **Windows Search** indexing `data/`
+
+**Why nothing warned before spending the two minutes.** The port check that prevents this lives in
+`scripts/refresh_snapshot.cmd` (`netstat` for a listener on `APP_PORT`, exit code 3), **not** in
+`build_snapshot.py`. Quick start above documents the bare `python scripts/build_snapshot.py`, so the
+guard is not in the path when a refresh is run by hand. The `.cmd` guard is also only a proxy for
+"the app is up" — it cannot tell whether a request is in flight, which is why it is deliberately
+conservative.
+
+**What survives a failure.** Nothing is lost and nothing is corrupted:
+
+- `bom.new.sqlite` is complete and left on disk — but a re-run **deletes rather than resumes** it,
+  so the ~2 minutes is paid again.
+- The live `bom.sqlite` is untouched; the app keeps serving throughout.
+- ⚠️ `bom.prev.sqlite` **is not a backup after this failure.** `swap_in` unlinks the old previous
+  generation and hardlinks the new one _before_ the rename, and both of those succeed — so `prev`
+  and the live file are now **two names for the same file** until the next successful swap.
+
+### The proposed solution — two slots and a pointer
+
+Stop renaming over the live file at all.
+
+- The build writes `bom_a.sqlite` / `bom_b.sqlite` alternately, into whichever slot is **not** live.
+- A small pointer file records which slot is live; promotion is a write to the pointer, not a
+  rename over an open database.
+- `_connect()` resolves the live path through the pointer.
+- The stale slot is deleted at the _start_ of the next build, by which time no request can hold it.
+
+This works precisely because connections are already per-request: a query already in flight finishes
+safely against the old slot, and the next request opens the new one. **No downtime, no race, and no
+need to stop the app** — for the rebuild _or_ for the swap.
+
+Costs and caveats:
+
+- One extra snapshot on disk, roughly 350 MB. Check free space on `D:` before deploying.
+- Touches `SNAPSHOT_PATH` / `SNAPSHOT_PREV_PATH`, about 30 references across `src/config.py`,
+  `src/db.py`, `scripts/build_snapshot.py`, `tests/test_db.py` and `tests/test_build_snapshot.py`.
+  Backend only — `src/static/` is untouched, so **no frontend rebuild**.
+- The `--max-age-hours` gate and the sanity gate's `previous_row_count` both read the live snapshot
+  and must follow the pointer too.
+- `bom.prev.sqlite` and its hardlink logic disappear; the inactive slot _is_ the previous generation.
+
+Alternatives considered and rejected:
+
+- **Swap tables inside the live database via `ATTACH`.** Requires opening the snapshot writable
+  (it is `mode=ro` today) and copying 350 MB inside a transaction. More invasive, slower, and gives
+  up the read-only guarantee.
+- **Retry the rename with backoff.** Narrows the race without closing it, and still fails outright
+  under sustained use or an antivirus scan.
+
+### Before deploying this to the server
+
+The code change is small; **the deployment is where the risk is.**
+
+- ⚠️ **Do not copy the project folder over the server.** `.env` and `data/` are gitignored, so they
+  exist only on each machine — a folder copy overwrites the server's `.env` with laptop paths and
+  can push a stale local `bom.sqlite` over the live one. Commit, push, and `git pull` on the server
+  instead.
+- ⚠️ **The server has local edits that are not in GitHub.** Run `git status` and `git diff` there
+  first; a pull or a copy would discard them, and nobody has read them yet.
+- ⚠️ **Plan the migration.** After the change there is no pointer file on the server yet, only
+  `bom.sqlite`. Without a fallback the app raises `RuntimeError: No snapshot at ...` and stays down
+  until a rebuild finishes. Either fall back to the legacy `bom.sqlite` when no pointer exists, or
+  write a pointer at it as a one-time step. The fallback is preferable — it makes the deploy a no-op
+  until the first refresh.
+- **Clean up the leftovers** from the failed run: the orphaned `bom.new.sqlite`, and the degenerate
+  `bom.prev.sqlite` hardlink described above.
+- **The gate is the test suite, not "it boots."** Both test files above touch these paths.
 
 ---
